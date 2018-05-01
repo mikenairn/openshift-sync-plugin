@@ -33,7 +33,7 @@ public class Constants {
     public static final String OPENSHIFT_LABELS_BUILD_CONFIG_NAME = "openshift.io/build-config.name";
     public static final String OPENSHIFT_LABELS_BUILD_CONFIG_GIT_REPOSITORY_NAME = "openshift.io/gitRepository";
     // see PR https://github.com/openshift/jenkins-sync-plugin/pull/189, there was a issue with having "/"
-    // in a label we construct a watch over, where usual UTF-8 encoding of the label name (which becomes part of 
+    // in a label we construct a watch over, where usual UTF-8 encoding of the label name (which becomes part of
     // a query param on the REST invocation) was causing okhttp3 to complain (there is even more history/discussion
     // in the PR as to issues with fixing).
     // so we avoid use of "/" for this label
@@ -45,6 +45,7 @@ public class Constants {
     public static final String OPENSHIFT_SECRETS_DATA_SSHPRIVATEKEY = "ssh-privatekey";
     public static final String OPENSHIFT_SECRETS_DATA_FILENAME = "filename";
     public static final String OPENSHIFT_SECRETS_DATA_CERTIFICATE = "certificate";
+    public static final String OPENSHIFT_SECRETS_DATA_DEVELOPER_PROFILE = "developer-profile";
     public static final String OPENSHIFT_SECRETS_TYPE_SSH = "kubernetes.io/ssh-auth";
     public static final String OPENSHIFT_SECRETS_TYPE_BASICAUTH = "kubernetes.io/basic-auth";
     public static final String OPENSHIFT_SECRETS_TYPE_OPAQUE = "Opaque";

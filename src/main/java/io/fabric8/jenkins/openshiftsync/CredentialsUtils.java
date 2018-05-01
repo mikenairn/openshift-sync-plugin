@@ -1,5 +1,6 @@
 package io.fabric8.jenkins.openshiftsync;
 
+import au.com.rayh.DeveloperProfile;
 import com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey;
 import com.cloudbees.plugins.credentials.*;
 import com.cloudbees.plugins.credentials.domains.Domain;
@@ -17,10 +18,14 @@ import jenkins.model.Jenkins;
 
 import org.acegisecurity.context.SecurityContext;
 import org.acegisecurity.context.SecurityContextHolder;
+import org.apache.commons.fileupload.FileItem;
+import org.apache.commons.fileupload.disk.DiskFileItemFactory;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
@@ -257,6 +262,10 @@ public class CredentialsUtils {
             if (isNotBlank(certificateDate)) {
                 return newCertificateCredential(secretName, passwordData, certificateDate);
             }
+            String developerProfileData = data.get(OPENSHIFT_SECRETS_DATA_DEVELOPER_PROFILE);
+            if (isNotBlank(developerProfileData)) {
+                return newDeveloperProfile(secretName, passwordData, developerProfileData);
+            }
 
             logger.log(
                     Level.WARNING,
@@ -293,6 +302,35 @@ public class CredentialsUtils {
 
         }
         return new FileCredentialsImpl(CredentialsScope.GLOBAL, secretName, secretName, secretName, SecretBytes.fromString(fileData));
+    }
+
+    private static Credentials newDeveloperProfile(String secretName, String passwordData, String developerProfile) {
+
+        logger.log(Level.INFO,"newDeveloperProfile " + secretName);
+        if (secretName == null || secretName.length() == 0 ||
+                passwordData == null || passwordData.length() == 0 ||
+                developerProfile == null || developerProfile.length() == 0) {
+            logger.log(Level.WARNING, "Invalid secret data, secretName: " +
+                    secretName + " developerProfile is null: " + (developerProfile == null) +
+                    " developerProfile is empty: " +
+                    (developerProfile != null ? developerProfile.length() == 0 : false));
+            return null;
+        }
+        hudson.util.Secret secretPassword = hudson.util.Secret.fromString(new String(Base64.decode(passwordData)));
+        try{
+            File temp = File.createTempFile("developer", ".developerprofile");
+            DiskFileItemFactory factory = new DiskFileItemFactory();
+            FileItem fi = factory.createItem("developerProfile", null, false, temp.getAbsolutePath());
+
+            OutputStream os = fi.getOutputStream();
+            os.write(Base64.decode(developerProfile));
+            os.close();
+
+            return new DeveloperProfile(CredentialsScope.GLOBAL, secretName, secretName, secretPassword, fi);
+        }catch(IOException e){
+            e.printStackTrace();
+            return null;
+        }
     }
 
     private static Credentials newCertificateCredential(String secretName, String passwordData, String certificateData) {
