@@ -1,5 +1,6 @@
 package io.fabric8.jenkins.openshiftsync;
 
+import au.com.rayh.DeveloperProfile;
 import com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey;
 import com.cloudbees.plugins.credentials.*;
 import com.cloudbees.plugins.credentials.domains.Domain;
@@ -16,15 +17,23 @@ import jenkins.model.Jenkins;
 
 import org.acegisecurity.context.SecurityContext;
 import org.acegisecurity.context.SecurityContextHolder;
+import org.apache.commons.fileupload.FileItem;
+import org.apache.commons.fileupload.disk.DiskFileItemFactory;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.Map;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import static hudson.Util.fixNull;
 import static io.fabric8.jenkins.openshiftsync.Constants.*;
@@ -252,6 +261,10 @@ public class CredentialsUtils {
             if (isNotBlank(fileData)) {
                 return newSecretFileCredential(secretName, fileData);
             }
+            String developerProfileData = data.get(OPENSHIFT_SECRETS_DATA_DEVELOPER_PROFILE);
+            if (isNotBlank(developerProfileData)) {
+                return newDeveloperProfile(secretName, passwordData, developerProfileData);
+            }
 
             logger.log(
                     Level.WARNING,
@@ -288,6 +301,84 @@ public class CredentialsUtils {
         }
         return new FileCredentialsImpl(CredentialsScope.GLOBAL, secretName, secretName, secretName, SecretBytes.fromString(fileData));
     }
+
+    private static Credentials newDeveloperProfile(String secretName, String passwordData, String developerProfile) {
+
+        logger.log(Level.INFO,"newDeveloperProfile " + secretName);
+        if (secretName == null || secretName.length() == 0 ||
+                developerProfile == null || developerProfile.length() == 0) {
+            logger.log(Level.WARNING, "Invalid secret data, secretName: " +
+                    secretName + " developerProfile is null: " + (developerProfile == null) +
+                    " developerProfile is empty: " +
+                    (developerProfile != null ? developerProfile.length() == 0 : false));
+            return null;
+        }
+        String certificatePassword = passwordData != null ? new String(Base64.decode(passwordData)) : null;
+        hudson.util.Secret secretPassword = certificatePassword != null ? hudson.util.Secret.fromString(certificatePassword) : null;
+
+        logger.log(Level.INFO, "secretPassword = " + secretPassword);
+
+
+        try{
+            //create a temp file
+            File temp = File.createTempFile("developer", ".developerprofile");
+
+            logger.log(Level.INFO, "Created temp file " + temp.getAbsolutePath());
+
+            DiskFileItemFactory factory = new DiskFileItemFactory();
+            FileItem fi = factory.createItem("developerProfile", null, false, temp.getAbsolutePath());
+
+            OutputStream os = fi.getOutputStream();
+            os.write(Base64.decode(developerProfile));
+            os.close();
+
+
+            logger.log(Level.INFO, "fi.getSize() = " + fi.getSize());
+            logger.log(Level.INFO, "Created FileItem");
+
+
+            //REMOVE
+            try {
+                getCertificates(IOUtils.toByteArray(fi.getInputStream()), secretPassword);
+            } catch (Exception e) {
+                e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+            }
+            //REMOVE
+
+
+            return new DeveloperProfile(CredentialsScope.GLOBAL, secretName, secretName, secretPassword, fi);
+        }catch(IOException e){
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+
+    //REMOVE - Copied from the xcode-plugin to debug
+    private static List<X509Certificate> getCertificates(byte[] image, hudson.util.Secret password) throws IOException, GeneralSecurityException {
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(image))) {
+            List<X509Certificate> r = new ArrayList<>();
+
+            ZipEntry ze;
+            while ((ze = zip.getNextEntry()) != null) {
+                if (ze.getName().endsWith(".p12")) {
+                    KeyStore ks = KeyStore.getInstance("pkcs12");
+                    ks.load(zip, null);
+                    Enumeration<String> en = ks.aliases();
+                    while (en.hasMoreElements()) {
+                        String s = en.nextElement();
+                        Certificate c = ks.getCertificate(s);
+                        if (c instanceof X509Certificate) {
+                            r.add((X509Certificate) c);
+                        }
+                    }
+                }
+            }
+
+            return r;
+        }
+    }
+   //
 
     private static Credentials newSSHUserCredential(String secretName,
             String username, String sshKeyData) {
